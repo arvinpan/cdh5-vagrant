@@ -5,11 +5,14 @@
 VAGRANTFILE_API_VERSION = "2"
 
 # Configuration parameters
-managerRam = 2048                     # Ram in MB for the Cludera Manager Node
-nodeRam = 1024                        # Ram in MB for each DataNode
+managerRam = 8192                     # Ram in MB for the Cludera Manager Node
+managerCpu = 8
+nodeRam = 4096                        # Ram in MB for each DataNode
+nodeCpu = 4
 nodeCount = 3                         # Number of DataNodes to create
 privateNetworkIp = "10.10.50.5"       # Starting IP range for the private network between nodes
-secondaryStorage = 80                 # Size in GB for the secondary virtual HDD
+secondaryStorage = 40                 # Size in GB for the secondary virtual HDD
+sshBasePort = 22200
 
 # Do not edit below this line
 # --------------------------------------------------------------
@@ -43,15 +46,18 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "centos65-x86_64-20140116"
   config.vm.box_url = "https://github.com/2creatives/vagrant-centos/releases/download/v6.4.2/centos64-x86_64-20140116.box"
   config.vm.define "cdh-master" do |master|
-    master.vm.network :public_network, :bridge => 'eth0'
+    # master.vm.network :public_network, :bridge => 'eth0'
+    master.vm.network "private_network", ip: '192.168.56.4'
     master.vm.network :private_network, ip: "#{privateSubnet}.#{privateStartingIp}", :netmask => "255.255.255.0", virtualbox__intnet: "cdhnetwork"
     master.vm.hostname = "cdh-master"
+    master.vm.network "forwarded_port", guest: 22, host: "#{sshBasePort}"
 
     master.vm.provider "vmware_fusion" do |v|
       v.vmx["memsize"]  = "#{managerRam}"
     end
     master.vm.provider :virtualbox do |v|
       v.name = master.vm.hostname.to_s
+      v.cpus = "#{managerCpu}"
       v.customize ["modifyvm", :id, "--memory", "#{managerRam}"]
       file_to_disk = File.realpath( "." ).to_s + "/" + v.name + "_secondary_hdd.vdi"
       if ARGV[0] == "up" && ! File.exist?(file_to_disk)
@@ -72,12 +78,14 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     id = i+1
     config.vm.define "cdh-node#{id}" do |node|
       node.vm.network :private_network, ip: "#{privateSubnet}.#{privateStartingIp + id}", :netmask => "255.255.255.0", virtualbox__intnet: "cdhnetwork"
+      node.vm.network "forwarded_port", guest: 22, host: "#{sshBasePort + id}"
       node.vm.hostname = "cdh-node#{id}"
       node.vm.provider "vmware_fusion" do |v|
         v.vmx["memsize"]  = "#{nodeRam}"
       end
       node.vm.provider :virtualbox do |v|
         v.name = node.vm.hostname.to_s
+        v.cpus = "#{nodeCpu}"
         v.customize ["modifyvm", :id, "--memory", "#{nodeRam}"]
         file_to_disk = File.realpath( "." ).to_s + "/" + v.name + "_secondary_hdd.vdi"
         if ARGV[0] == "up" && ! File.exist?(file_to_disk)
